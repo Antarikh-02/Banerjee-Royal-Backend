@@ -16,7 +16,7 @@ const User = require('./models/user');
 const { required } = require('nodemon/lib/config');
 
 //try to connect with mongodb
-mongoose.connect('mongodb://127.0.0.1:27017/restaurant')
+mongoose.connect('mongodb+srv://bantarikh:xUBpFBnaEX8JJ9Mb@cluster1.idpvowb.mongodb.net/')
 .then(() => {
   console.log('Connected to database!');
 })
