@@ -27,7 +27,7 @@ mongoose.connect('mongodb+srv://bantarikh:xUBpFBnaEX8JJ9Mb@cluster1.idpvowb.mong
 //MenuItem Controller------------------------------------------------------
 
 
-const VALID_CATEGORIES = ['Starter', 'Main Course', 'Dessert', 'Beverage'];
+const VALID_CATEGORIES = ['Starter', 'Main Course', 'Biryani', 'Special Biryani', 'Naan', 'Dessert', 'Beverage'];
 const VALID_VEG_TYPES = ['Veg', 'Non-Veg'];
 exports.createMenuItem = async (req, res, next) => {
   console.log("Request Body:", req.body);
