@@ -365,8 +365,9 @@ exports.deleteReservation = async (req, res, next) => {
   }
 };
 
+// User Controller-------------------------------------------------------------
 
-const getUsers = async (req, res) => {
+ const getUsers = async (req, res) => {
   let users;
   try {
     users = await User.find({}, '-password');
@@ -380,161 +381,154 @@ const getUsers = async (req, res) => {
   res.json({users: users.map(user => user.toObject({ getters: true }))});
 };
 
-const adminsignup = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    
-    const errorMessage='Invalid inputs passed, please check your data.';
-    return res.status(422).json({ message: errorMessage });
-  }
-  const { name, email, password ,usertype} = req.body;
+// ------------------------------------------------------------------------------------------------
 
-  let existingUser
+const AdmingetUsers = async (req, res) => {
+  let users;
   try {
-    existingUser = await User.findOne({ email: email })
+    users = await Admin.find({}, '-password');
   } catch (err) {
     
-    return res.status(500).json({ message: 'Signing up failed, please try again later.' });
-  }
+      const errorMessage='Fetching users failed, please try again later.';
+      return res.status(500).json({ message: errorMessage });
   
-  if (existingUser) {
-    
-    const errorMessage='User exists already, please login instead.';
-    return res.status(422).json({ message: errorMessage });
+
   }
-  //let hashPassword;
-  //hashPassword=await bycryptjs.hash(password,12);
-  const createdUser = new User({
-    name,
-    email,
-
-    //password:hashPassword,
-    password,
-    products:[],
-    usertype
-  });
-
-  try {
-    await createdUser.save();
-  } catch (err) {
-    
-    const errorMessage='Signing up failed, please try again.';
-    return res.status(422).json({ message: errorMessage });
-  }
-
- return res.status(201).json({user: createdUser.toObject({ getters: true })});
+  res.json({users: users.map(Admin => Admin.toObject({ getters: true }))});
 };
-const signup = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    
-    const errorMessage='Invalid inputs passed, please check your data.';
-    return res.status(422).json({ message: errorMessage });
-  }
-  const { name, email, password } = req.body;
-
-  let existingUser
-  try {
-    existingUser = await User.findOne({ email: email })
-  } catch (err) {
-    
-    return res.status(500).json({ message: 'Signing up failed, please try again later.' });
-  }
+// ------------------------------------------------------------------------------------------
+ const adminsignup = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      
+      const errorMessage='Invalid inputs passed, please check your data.';
+      return res.status(422).json({ message: errorMessage });
+    }
+    const { name, email, password ,usertype} = req.body;
   
-  if (existingUser) {
+    let existingUser
+    try {
+      existingUser = await User.findOne({ email: email })
+    } catch (err) {
+      
+      return res.status(500).json({ message: 'Signing up failed, please try again later.' });
+    }
     
-    const errorMessage='User exists already, please login instead.';
-    return res.status(422).json({ message: errorMessage });
-  }
-  //let hashPassword;
-  //hashPassword=await bycryptjs.hash(password,12);
-  const createdUser = new User({
-    name,
-    email,
-    //password:hashPassword,
-    password,
-    products:[]
-  });
-
-  try {
-    await createdUser.save();
-  } catch (err) {
+    if (existingUser) {
+      
+      const errorMessage='User exists already, please login instead.';
+      return res.status(422).json({ message: errorMessage });
+    }
+    //let hashPassword;
+    //hashPassword=await bycryptjs.hash(password,12);
+    const createdUser = new Admin({
+      name,
+      email,
+      password,
+      usertype
+    });
+  
+    try {
+      await createdUser.save();
+    } catch (err) {
+      
+      const errorMessage='Signing up failed, please try again.';
+      return res.status(422).json({ message: errorMessage });
+    }
+  
+   return res.status(201).json({user: createdUser.toObject({ getters: true })});
+  };
+  const signup = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      
+      const errorMessage='Invalid inputs passed, please check your data.';
+      return res.status(422).json({ message: errorMessage });
+    }
+    const { name, email, password, usertype } = req.body;
+  
+    let existingUser
+    try {
+      existingUser = await User.findOne({ email: email })
+    } catch (err) {
+      
+      return res.status(500).json({ message: 'Signing up failed, please try again later.' });
+    }
     
-    const errorMessage='Signing up failed, please try again.';
-    return res.status(422).json({ message: errorMessage });
-  }
-
-  return res.status(201).json({user: createdUser.toObject({ getters: true })});
-};
-
-const login = async (req, res) => {
-  //console.log("fired"+email);
-  const { email, password } = req.body;
-
-  let existingUser;
-
-  try {
-    existingUser = await User.findOne({ email: email })
-  } catch (err) {
-    const errorMessage='Logging in failed, please try again later.';
-    return res.status(500).json({ message: errorMessage });
+    if (existingUser) {
+      
+      const errorMessage='User exists already, please login instead.';
+      return res.status(422).json({ message: errorMessage });
+    }
+    //let hashPassword;
+    //hashPassword=await bycryptjs.hash(password,12);
+    const createdUser = new User({
+      name,
+      email,
+      //password:hashPassword,
+      password,
+      usertype
+    });
+  
+    try {
+      await createdUser.save();
+    } catch (err) {
+      
+      const errorMessage='Signing up failed, please try again.';
+      return res.status(422).json({ message: errorMessage });
+    }
+  
+    return res.status(201).json({user: createdUser.toObject({ getters: true })});
   };
   
-  /*
-let isValidpassword;
-isValidpassword=await bycryptjs.compare(password,existingUser.password)
-if(!isValidpassword)
-{
+  const login = async (req, res) => {
+    const { email, password } = req.body;
   
-     const errorMessage='Invalid credentials, could not log you in.';
- 
-  return res.status(401).json({ message: errorMessage });
-}
-*/
-  if (!existingUser || existingUser.password !== password ||existingUser.usertye=='admin') {
-    const errorMessage='Invalid User name & password, could not log you in.';
- 
-    return res.status(401).json({ message: errorMessage });
-  }
-
-  return res.status(200).json({ user: existingUser.toObject({ getters: true }) });
-};
-
-const adminlogin = async (req, res) => {
-  //console.log("fired"+email);
-  const { email, password } = req.body;
-
-  let existingUser;
-
-  try {
-    existingUser = await User.findOne({ email: email })
-  } catch (err) {
-    const errorMessage='Logging in failed, please try again later.';
-    return res.status(500).json({ message: errorMessage });
+    let existingUser;
+  
+    try {
+      existingUser = await User.findOne({ email: email });
+    } catch (err) {
+      const errorMessage = 'Logging in failed, please try again later.';
+      return res.status(500).json({ message: errorMessage });
+    }
+  
+    // Ensure there's no usertype === 'admin' check for regular user login
+    if (!existingUser || existingUser.password !== password) {
+      const errorMessage = 'Invalid username or password, could not log you in.';
+      return res.status(401).json({ message: errorMessage });
+    }
+  
+    return res.status(201).json({ user: existingUser.toObject({ getters: true }) });
   };
   
-  /*
-let isValidpassword;
-isValidpassword=await bycryptjs.compare(password,existingUser.password)
-if(!isValidpassword)
-{
   
-     const errorMessage='Invalid credentials, could not log you in.';
- 
-  return res.status(401).json({ message: errorMessage });
-}
-*/
-//console.log(existingUser);
-  if (!existingUser || existingUser.password !== password ||existingUser.usertype !=="admin") {
-    const errorMessage='Invalid User name & password, could not log you in.';
- 
-    return res.status(401).json({ message: errorMessage });
-  }
+ const adminlogin = async (req, res) => {
+    //console.log("fired"+email);
+    const { email, password } = req.body;
+  
+    let existingAdmin;
+  
+    try {
+      existingAdmin = await Admin.findOne({ email: email })
+    } catch (err) {
+      const errorMessage='Logging in failed, please try again later.';
+      return res.status(500).json({ message: errorMessage });
+    };
+    
+    if (!existingAdmin || existingAdmin.password !== password ||existingAdmin.usertype !=="Admin") {
+      const errorMessage='Invalid User name & password, could not log you in.';
+   
+      return res.status(401).json({ message: errorMessage });
+    }
+  
+    return res.status(200).json({ Admin: existingAdmin.toObject({ getters: true }) });
+  };
 
-  return res.status(200).json({ user: existingUser.toObject({ getters: true }) });
-};
+
 exports.getUsers = getUsers;
 exports.signup = signup;
 exports.login = login;
 exports.adminlogin = adminlogin;
 exports.adminsignup = adminsignup;
+exports.AdmingetUsers = AdmingetUsers;

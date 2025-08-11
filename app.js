@@ -43,32 +43,31 @@ app.get('/reservation/:id', mongoPractice.getReservationById);
 app.patch('/reservation/:id', mongoPractice.updateReservation);
 app.delete('/reservation/:id', mongoPractice.deleteReservation);
 
-  app.get('/users', mongoPractice.getUsers);
-  app.post('/login', mongoPractice.login);
-/* admin url*/
-  app.post('/users',[
-    check('name')
-      .not()
-      .isEmpty(),
-    check('email')
-      .normalizeEmail() // Test@test.com => test@test.com
-      .isEmail(),
-    check('password').isLength({ min: 6 })
-  ], mongoPractice.signup);
-  app.post('/adminusers',[
-    check('name')
-      .not()
-      .isEmpty(),
-    check('email')
-      .normalizeEmail() // Test@test.com => test@test.com
-      .isEmail(),
-    check('password').isLength({ min: 6 })
-  ], mongoPractice.adminsignup);
-  
-  app.post('/adminlogin', mongoPractice.adminlogin);
+//User Routes-------------------------------------------------------------
+// User routes
+app.post('/userlogin', mongoPractice.login);
+app.post(
+  '/userssignup',
+  [
+    check('name').not().isEmpty(),
+    check('email').normalizeEmail().isEmail(),
+    check('password').isLength({ min: 8 })
+  ],
+  mongoPractice.signup
+);
 
-  
-//open the port the server listen
+// Other User routes
+app.get('/users', mongoPractice.getUsers);
+app.get('/AdmingetUsers', mongoPractice.AdmingetUsers);
+app.post('/adminlogin', mongoPractice.adminlogin);
+app.post(
+  '/adminusers',
+  [
+    check('email').normalizeEmail().isEmail(),
+    check('password').isLength({ min: 8 })
+  ],
+  mongoPractice.adminsignup
+);
 
 
 const PORT = 5000;
