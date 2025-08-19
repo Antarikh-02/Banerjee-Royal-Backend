@@ -185,46 +185,72 @@ exports.deleteMenuItem = async (req, res, next) => {
 //Reservation Controller------------------------------------------------------
 
 exports.createReservation = async (req, res, next) => {
-  // 1) express-validator check
+  // 1) Validation checks (express-validator)
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return next(new HttpError('Invalid inputs passed, please check your data.', 422));
   }
 
-  const { name, phone, email, date, timeSlot, guests, specialRequest } = req.body;
-
-  // 2) required fields
+  // 2) Required fields from body
+  let { name, phone, email, date, timeSlot, guests, specialRequest } = req.body;
   if (!name || !phone || !email || !date || !timeSlot || !guests) {
     return next(new HttpError('Missing required reservation fields.', 422));
   }
 
-  // 3) no past dates
+  // 3) Date must be today or later
   const bookingDate = new Date(date);
-  const today = new Date(); today.setHours(0,0,0,0);
-  if (bookingDate < today) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (isNaN(bookingDate.getTime()) || bookingDate < today) {
     return next(new HttpError('Reservation date must be today or later.', 422));
   }
 
-  // 4) create & save
+  // 4) Authenticated user required
+  const userId = req.user && req.user.id;
+  if (!userId) {
+    return next(new HttpError('Authentication required to create a reservation.', 401));
+  }
+
+  // 5) Ensure user exists (defensive)
+  let user;
   try {
-    const newReservation = new Reservation({
-      name: name.trim(),
-      phone: phone.trim(),
-      email: email.trim().toLowerCase(),
-      date: bookingDate,
-      timeSlot: timeSlot.trim(),
-      guests,
-      specialRequest: specialRequest ? specialRequest.trim() : undefined
-    });
+    user = await User.findById(userId);
+    if (!user) {
+      return next(new HttpError('User not found.', 404));
+    }
+  } catch (err) {
+    console.error(err);
+    return next(new HttpError('Could not verify user, please try again later.', 500));
+  }
+
+  // 6) Normalize inputs and prefer authenticated user's name/email if available
+  name = (req.user.name && req.user.name.trim()) || name.trim();
+  email = (req.user.email && req.user.email.toLowerCase().trim()) || email.toLowerCase().trim();
+  phone = phone.trim();
+  timeSlot = timeSlot.trim();
+  specialRequest = specialRequest ? specialRequest.trim() : undefined;
+
+  // 7) Create & save reservation
+  const newReservation = new Reservation({
+    user: userId,
+    name,
+    phone,
+    email,
+    date: bookingDate,
+    timeSlot,
+    guests,
+    specialRequest
+  });
+
+  try {
     await newReservation.save();
+    await newReservation.populate('user', 'name email'); // populate for response
     return res.status(201).json({ reservation: newReservation.toObject({ getters: true }) });
   } catch (err) {
-    // 5) handle duplicate‐key on the compound index
+    // Duplicate-key (compound index) handling
     if (err.code === 11000) {
-      return next(new HttpError(
-        'You already have a reservation for that date & time.',
-        422
-      ));
+      // Try to give a friendlier message depending on index keys
+      return next(new HttpError('That phone/date/time is already booked. Please choose another slot.', 409));
     }
     console.error(err);
     return next(new HttpError('Creating reservation failed, please try again later.', 500));
@@ -232,14 +258,34 @@ exports.createReservation = async (req, res, next) => {
 };
 
 /**
- * GET /reservation
+ * GET /reservations
+ * Admin => returns all reservations (populated)
+ * Regular user => returns only their reservations
  */
 exports.getReservations = async (req, res, next) => {
+  const userId = req.user && req.user.id;
+  const isAdmin = req.user && req.user.usertype === 'admin';
+
+  if (!userId) {
+    return next(new HttpError('Authentication required.', 401));
+  }
+
   try {
-    const reservations = await Reservation.find().sort({ date: 1, timeSlot: 1 });
-    if (!reservations.length) {
-      return res.status(404).json({ message: 'No reservations found.' });
+    let reservations;
+    if (isAdmin) {
+      reservations = await Reservation.find()
+        .populate('user', 'name email')
+        .sort({ date: 1, timeSlot: 1, createdAt: -1 });
+    } else {
+      reservations = await Reservation.find({ user: userId })
+        .populate('user', 'name email')
+        .sort({ date: 1, timeSlot: 1 });
     }
+
+    if (!reservations || !reservations.length) {
+      return res.status(200).json({ reservations: [] }); // return empty array rather than 404
+    }
+
     return res.json({ reservations: reservations.map(r => r.toObject({ getters: true })) });
   } catch (err) {
     console.error(err);
@@ -248,18 +294,31 @@ exports.getReservations = async (req, res, next) => {
 };
 
 /**
- * GET /reservation/:id
+ * GET /reservations/:id
+ * Owners or admins only
  */
 exports.getReservationById = async (req, res, next) => {
   const resId = req.params.id;
   if (!mongoose.Types.ObjectId.isValid(resId)) {
     return next(new HttpError('Invalid reservation ID.', 422));
   }
+
+  const userId = req.user && req.user.id;
+  if (!userId) {
+    return next(new HttpError('Authentication required.', 401));
+  }
+
   try {
-    const reservation = await Reservation.findById(resId);
+    const reservation = await Reservation.findById(resId).populate('user', 'name email');
     if (!reservation) {
       return next(new HttpError('Reservation not found.', 404));
     }
+
+    // Authorization: owner or admin
+    if (reservation.user && reservation.user._id.toString() !== userId && req.user.usertype !== 'admin') {
+      return next(new HttpError('You are not allowed to view this reservation.', 403));
+    }
+
     return res.json({ reservation: reservation.toObject({ getters: true }) });
   } catch (err) {
     console.error(err);
@@ -267,13 +326,33 @@ exports.getReservationById = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /reservation/:id
- */
-// controllers/reservationController.js
+exports.getReservationsByUserId = async (req, res, next) => {
+  const userId = req.params.userId;
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    return next(new HttpError('Invalid user id.', 422));
+  }
 
+  try {
+    const reservations = await Reservation.find({ user: userId })
+      .populate('user', 'name email')
+      .sort({ date: 1, timeSlot: 1, createdAt: -1 });
+
+    return res.status(200).json({
+      reservations: reservations.map(r => r.toObject({ getters: true }))
+    });
+  } catch (err) {
+    console.error('Fetching reservations by userId failed', err);
+    return next(new HttpError('Fetching reservations failed, please try again later.', 500));
+  }
+};
+
+/**
+ * PATCH /reservations/:id
+ * Owners may update most fields for their reservations; only admin may set arbitrary status.
+ * Owners can cancel (set status to 'Cancelled'). Admins can set status to 'Pending'|'Confirmed'|'Cancelled'.
+ */
 exports.updateReservation = async (req, res, next) => {
-  // 1) Validate request body (if you have express-validator rules)
+  // 1) Validation checks
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return next(new HttpError('Invalid inputs passed, please check your data.', 422));
@@ -285,7 +364,31 @@ exports.updateReservation = async (req, res, next) => {
     return next(new HttpError('Invalid reservation ID.', 422));
   }
 
-  // 3) Whitelist fields allowed to change
+  const userId = req.user && req.user.id;
+  if (!userId) {
+    return next(new HttpError('Authentication required.', 401));
+  }
+
+  // 3) Fetch reservation
+  let reservation;
+  try {
+    reservation = await Reservation.findById(resId);
+    if (!reservation) {
+      return next(new HttpError('Reservation not found.', 404));
+    }
+  } catch (err) {
+    console.error(err);
+    return next(new HttpError('Fetching reservation failed, please try again later.', 500));
+  }
+
+  // 4) Authorization: owner or admin
+  const isOwner = reservation.user && reservation.user.toString() === userId;
+  const isAdmin = req.user.usertype === 'admin';
+  if (!isOwner && !isAdmin) {
+    return next(new HttpError('You are not allowed to modify this reservation.', 403));
+  }
+
+  // 5) Whitelist updatable fields
   const allowed = [
     'name',
     'phone',
@@ -301,62 +404,82 @@ exports.updateReservation = async (req, res, next) => {
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
       let val = req.body[key];
-      // Trim strings
-      if (typeof val === 'string') {
-        val = val.trim();
-      }
-      // Parse date
+      if (typeof val === 'string') val = val.trim();
+
       if (key === 'date') {
         val = new Date(val);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        if (val < today) {
+        if (isNaN(val.getTime()) || val < today) {
           return next(new HttpError('Reservation date must be today or later.', 422));
         }
       }
-      // Validate status
-      if (key === 'status' && !['Pending', 'Confirmed', 'Cancelled'].includes(val)) {
-        return next(new HttpError('Invalid status value.', 422));
+
+      if (key === 'status') {
+        // Only admin can set arbitrary statuses. Owners can only set status to 'Cancelled' (i.e. cancel their booking).
+        const allowedStatuses = ['Pending', 'Confirmed', 'Cancelled'];
+        if (!allowedStatuses.includes(val)) {
+          return next(new HttpError('Invalid status value.', 422));
+        }
+        if (!isAdmin && val !== 'Cancelled') {
+          return next(new HttpError('Only admins can change the status to that value.', 403));
+        }
       }
+
       updates[key] = val;
     }
   }
 
-  // 4) Perform the update
-  let updated;
+  // 6) Apply updates and save (use try/catch for duplicate-key)
   try {
-    updated = await Reservation.findByIdAndUpdate(
-      resId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    Object.assign(reservation, updates);
+    await reservation.save();
+    await reservation.populate('user', 'name email'); // populate for response
+    return res.json({ reservation: reservation.toObject({ getters: true }) });
   } catch (err) {
+    if (err.code === 11000) {
+      return next(new HttpError('That phone/date/time is already booked. Please choose another slot.', 409));
+    }
     console.error(err);
     return next(new HttpError('Updating reservation failed, please try again later.', 500));
   }
-
-  if (!updated) {
-    return next(new HttpError('Reservation not found.', 404));
-  }
-
-  // 5) Return the updated reservation
-  res.json({ reservation: updated.toObject({ getters: true }) });
 };
 
-
 /**
- * DELETE /reservation/:id
+ * DELETE /reservations/:id
+ * Owners or admins can delete. Owners may prefer to cancel rather than delete;
+ * here we allow deletion if owner or admin. If you prefer only admins to hard-delete, change logic accordingly.
  */
 exports.deleteReservation = async (req, res, next) => {
   const resId = req.params.id;
   if (!mongoose.Types.ObjectId.isValid(resId)) {
     return next(new HttpError('Invalid reservation ID.', 422));
   }
+
+  const userId = req.user && req.user.id;
+  if (!userId) {
+    return next(new HttpError('Authentication required.', 401));
+  }
+
+  let reservation;
   try {
-    const reservation = await Reservation.findById(resId);
+    reservation = await Reservation.findById(resId);
     if (!reservation) {
       return next(new HttpError('Reservation not found.', 404));
     }
+  } catch (err) {
+    console.error(err);
+    return next(new HttpError('Fetching reservation failed, please try again later.', 500));
+  }
+
+  // Authorization: owner or admin
+  const isOwner = reservation.user && reservation.user.toString() === userId;
+  const isAdmin = req.user.usertype === 'admin';
+  if (!isOwner && !isAdmin) {
+    return next(new HttpError('You are not allowed to delete this reservation.', 403));
+  }
+
+  try {
     await reservation.remove();
     return res.json({ message: 'Reservation deleted successfully.' });
   } catch (err) {

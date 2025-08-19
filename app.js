@@ -43,6 +43,8 @@ app.get('/reservation/:id', mongoPractice.getReservationById);
 app.patch('/reservation/:id', mongoPractice.updateReservation);
 app.delete('/reservation/:id', mongoPractice.deleteReservation);
 
+app.get('/reservation/user/:userId', mongoPractice.getReservationsByUserId);
+
 //User Routes-------------------------------------------------------------
 // User routes
 app.post('/userlogin', mongoPractice.login);
