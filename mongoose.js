@@ -253,15 +253,40 @@ exports.createReservation = async (req, res, next) => {
   }
 };
 
-exports.getReservations = async (req, res) => {
+exports.getReservations = async (req, res, next) => {
+  // If you have authentication, req.user will exist; otherwise we return all reservations
+  const userId = req.user && (req.user.id || req.user._id);
+  const isAdmin = req.user && req.user.usertype === 'admin';
+
   try {
-    const reservations = await Reservation.find();
-    res.status(200).json(reservations);
+    let reservations;
+    if (userId) {
+      if (isAdmin) {
+        // admin -> all
+        reservations = await Reservation.find()
+          .populate('user', 'name email')
+          .sort({ date: 1, timeSlot: 1, createdAt: -1 });
+      } else {
+        // logged-in regular user -> only their reservations
+        reservations = await Reservation.find({ user: userId })
+          .populate('user', 'name email')
+          .sort({ date: 1, timeSlot: 1 });
+      }
+    } else {
+      // no auth provided -> return all (so frontend/admin view works without token)
+      reservations = await Reservation.find()
+        .populate('user', 'name email')
+        .sort({ date: 1, timeSlot: 1, createdAt: -1 });
+    }
+
+    // always return an array
+    return res.status(200).json({ reservations: reservations.map(r => r.toObject({ getters: true })) });
   } catch (err) {
-    console.error("❌ Reservation fetch failed:", err);
-    res.status(500).json({ error: "Failed to fetch reservations" });
+    console.error('getReservations ERROR:', err);
+    return next(new HttpError('Fetching reservations failed, please try again later.', 500));
   }
 };
+
 
 exports.getReservationById = async (req, res, next) => {
   const resId = req.params.id;
