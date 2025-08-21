@@ -1,6 +1,6 @@
 const express = require('express');
 const { check } = require('express-validator');
-const cors = require('cors');
+
 const bodyParser = require('body-parser');
 //import file moongoose
 const mongoPractice = require('./mongoose');
@@ -11,7 +11,15 @@ const app = express();
 //use thge middle ware body parser
 app.use(bodyParser.json());
 app.use(express.json());
-app.use(cors())
+
+
+const cors = require('cors');
+app.use(cors({
+  origin: '*', // or ["https://your-frontend-domain.com"]
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 var multer = require('multer');
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
